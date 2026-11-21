@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calculator</title>
+<style>
+  /* Page centring only; everything else is scoped under .calc (T3). */
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 8px;
+    box-sizing: border-box;
+    background: #1c1c1e;
+  }
+
+  .calc {
+    --calc-gap: 10px;
+    --calc-orange: #ff9500;
+    width: 100%;
+    max-width: 380px;
+    box-sizing: border-box;
+    padding: 16px;
+    border-radius: 24px;
+    background: #000000;
+    color: #ffffff;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+      "Helvetica Neue", Arial, sans-serif;
+  }
+  .calc *, .calc *::before, .calc *::after { box-sizing: border-box; }
+
+  /* ---- Display ---- */
+  .calc__display {
+    padding: 8px 6px 16px;
+    background: #000000;
+    text-align: right;
+  }
+
+  /* direction: rtl makes the ellipsis appear on the LEFT so the newest text
+     stays visible; the inner span is set back to ltr so operators keep order. */
+  .calc__equation {
+    height: 1.4em;
+    line-height: 1.4;
+    font-size: 1rem;
+    color: #a5a5a5;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    direction: rtl;
+  }
+  .calc__equation span { direction: ltr; unicode-bidi: embed; }
+
+  /* Font size starts large; the script steps it down (floor 24px) to fit. */
+  .calc__value {
+    font-size: 56px;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    color: #ffffff;
+    font-variant-numeric: tabular-nums;
+  }
+  .calc__value.is-error { color: var(--calc-orange); }
+
+  /* ---- Key grid ---- */
+  .calc__keys {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--calc-gap);
+  }
+
+  .calc__btn {
+    aspect-ratio: 1;
+    min-width: 44px;
+    min-height: 44px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    font: inherit;
+    font-size: 1.6rem;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 0.08s ease, filter 0.15s ease;
+  }
+  .calc__btn:hover { filter: brightness(1.1); }
+  .calc__btn:active { transform: scale(0.95); }
+  .calc__btn:focus-visible {
+    outline: 3px solid #d0d0ff;
+    outline-offset: 2px;
+  }
+
+  .calc__btn--digit    { background: #333333; color: #ffffff; }
+  .calc__btn--function { background: #a5a5a5; color: #000000; }
+  .calc__btn--operator { background: var(--calc-orange); color: #ffffff; }
+
+  /* Pill shapes: stretch to the row height instead of staying square. */
+  .calc__btn--ac   { grid-column: span 3; aspect-ratio: auto; border-radius: 999px; }
+  .calc__btn--zero { grid-column: span 2; aspect-ratio: auto; border-radius: 999px;
+                     text-align: left; padding-left: 8%; }
+
+  /* Selected operator: white background, orange text. */
+  .calc__btn--operator.is-selected { background: #ffffff; color: var(--calc-orange); }
+
+  /* Operators and = are ignored while in the Error state. */
+  .calc__btn[aria-disabled="true"] { opacity: 0.5; cursor: default; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .calc__btn { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<main class="calc" id="calc">
+  <div class="calc__display">
+    <div class="calc__equation" id="calc-equation" aria-hidden="true"><span></span></div>
+    <div class="calc__value" id="calc-value" role="status" aria-live="polite" aria-atomic="true">0</div>
+  </div>
+
+  <div class="calc__keys" id="calc-keys">
+    <button type="button" class="calc__btn calc__btn--function calc__btn--ac" data-action="clear" aria-label="AC, all clear">AC</button>
+    <button type="button" class="calc__btn calc__btn--operator" data-action="operator" data-value="/" aria-pressed="false" aria-label="divide">&divide;</button>
+
+    <button type="button" class="calc__btn calc__btn--digit" data-action="digit" data-value="7" aria-label="seven">7</button>
+    <button type="button" class="calc__btn calc__btn--digit" data-action="digit" data-value="8" aria-label="eight">8</button>
+    <button type="button" class="calc__btn calc__btn--digit" data-action="digit" data-value="9" aria-label="nine">9</button>
+    <button type="button" class="calc__btn calc__btn--operator" data-action="operator" data-value="*" aria-pressed="false" aria-label="multiply">&times;</button>
+
+    <button type="button" class="calc__btn calc__btn--digit" data-action="digit" data-value="4" aria-label="four">4</button>
+    <button type="button" class="calc__btn calc__btn--digit" data-action="digit" data-value="5" aria-label="five">5</button>
+    <button type="button" class="calc__btn calc__btn--digit" data-action="digit" data-value="6" aria-label="six">6</button>
+    <button type="button" class="calc__btn calc__btn--operator" data-action="operator" data-value="-" aria-pressed="false" aria-label="minus">&minus;</button>
+
+    <button type="button" class="calc__btn calc__btn--digit" data-action="digit" data-value="1" aria-label="one">1</button>
+    <button type="button" class="calc__btn calc__btn--digit" data-action="digit" data-value="2" aria-label="two">2</button>
+    <button type="button" class="calc__btn calc__btn--digit" data-action="digit" data-value="3" aria-label="three">3</button>
+    <button type="button" class="calc__btn calc__btn--operator" data-action="operator" data-value="+" aria-pressed="false" aria-label="plus">+</button>
+
+    <button type="button" class="calc__btn calc__btn--digit calc__btn--zero" data-action="digit" data-value="0" aria-label="zero">0</button>
+    <button type="button" class="calc__btn calc__btn--digit" data-action="decimal" aria-label="decimal point">.</button>
+    <button type="button" class="calc__btn calc__btn--operator" data-action="equals" aria-label="equals">=</button>
+  </div>
+</main>
+
+<!-- ============================ LOGIC (no DOM access) ============================ -->
+<script id="calc-logic">
+var MINUS = '−';
+var ERROR_TEXT = 'Error';
+var MAX_DIGITS = 12;          // digits per entry (the "." and sign are not counted)
+var SIGNIFICANT_DIGITS = 12;  // results are rounded to this many digits to hide float noise
+var EXPONENT_DIGITS = 9;      // significant digits shown in scientific notation (display only)
+var MAX_PLAIN_LENGTH = 14;    // longer plain numbers are shown in scientific notation
+
+// Operator key -> symbol shown on the equation line.
+var OPERATOR_SYMBOLS = { '+': '+', '-': MINUS, '*': '×', '/': '÷' };
+
+// Round to SIGNIFICANT_DIGITS so 0.1 * 3 becomes 0.3 instead of 0.30000000000000004.
+// This is the only place values are rounded; formatNumber never changes a value.
+function roundResult(n) {
+  return Number(n.toPrecision(SIGNIFICANT_DIGITS));
+}
+
+// How many digits follow the decimal point, also for exponent forms like 1e-7 or 1.5e-7.
+function decimals(x) {
+  var parts = String(x).toLowerCase().split('e');
+  var dot = parts[0].indexOf('.');
+  var mantissaDecimals = (dot === -1) ? 0 : parts[0].length - dot - 1;
+  var exponent = (parts.length > 1) ? Number(parts[1]) : 0;
+  return Math.max(0, mantissaDecimals - exponent);
+}
+
+// Turn a number into display text. The value is NOT changed here: this only
+// chooses the notation (plain, or scientific when it would not fit the display).
+function formatNumber(n) {
+  if (!Number.isFinite(n)) return ERROR_TEXT;
+  if (n === 0) return '0'; // also covers -0
+
+  var abs = Math.abs(n);
+  var text = String(abs);
+  if (abs >= 1e12 || abs < 1e-6 || text.length > MAX_PLAIN_LENGTH) {
+    // e.g. "9.99999980e+15" -> "9.9999998e+15"
+    text = abs.toExponential(EXPONENT_DIGITS - 1).replace(/\.?0+e/, 'e');
+  }
+  return (n < 0 ? MINUS : '') + text;
+}
+
+// Returns the result, or null when the calculation is not allowed (divide by zero).
+function calculate(a, operator, b) {
+  var result;
+  if (operator === '+' || operator === '-') {
+    result = (operator === '+') ? a + b : a - b;
+    // Cancellation: 1.00000000001 - 1 must not keep noise beyond the operands' decimals.
+    var places = Math.min(100, Math.max(decimals(a), decimals(b)));
+    result = Number(result.toFixed(places));
+  } else if (operator === '*') {
+    result = a * b;
+  } else if (operator === '/') {
+    if (b === 0) return null;
+    result = a / b;
+  } else {
+    return null;
+  }
+
+  return Number.isFinite(result) ? roundResult(result) : null;
+}
+
+function createCalculator() {
+  var entry;           // digits being typed as text ("0", "12.5"), or null when showing a number
+  var accumulator;     // left operand / last result (number), or null
+  var pendingOp;       // '+', '-', '*', '/' or null
+  var awaitingOperand; // true right after an operator: next digit starts a new number
+  var justEvaluated;   // true after "=": next digit starts a brand-new calculation
+  var isError;
+  var equation;        // text of the small line above the display
+
+  function reset() {
+    entry = '0';
+    accumulator = null;
+    pendingOp = null;
+    awaitingOperand = false;
+    justEvaluated = false;
+    isError = false;
+    equation = '';
+  }
+
+  function setError() {
+    reset();
+    isError = true;
+  }
+
+  // Called before a digit or "." is added: decide whether a fresh number starts.
+  function beginEntry() {
+    if (isError || justEvaluated) reset();
+    if (awaitingOperand) {
+      entry = '';
+      awaitingOperand = false;
+    }
+  }
+
+  function countDigits(text) {
+    return text.replace(/[^0-9]/g, '').length;
+  }
+
+  function inputDigit(d) {
+    d = String(d);
+    if (!/^[0-9]$/.test(d)) return;
+    beginEntry();
+    if (countDigits(entry) >= MAX_DIGITS) return;       // F5
+    entry = (entry === '0') ? d : entry + d;            // F4: no leading zeros
+  }
+
+  function inputDecimal() {
+    beginEntry();
+    if (entry === '') entry = '0.';                     // F3
+    else if (entry.indexOf('.') === -1) entry += '.';   // F2: one "." only
+  }
+
+  function inputOperator(op) {
+    if (isError || !Object.prototype.hasOwnProperty.call(OPERATOR_SYMBOLS, op)) return;       // F19
+
+    // F9: another operator right after an operator replaces it.
+    if (pendingOp !== null && awaitingOperand) {
+      pendingOp = op;
+      equation = formatNumber(accumulator) + ' ' + OPERATOR_SYMBOLS[op];
+      return;
+    }
+
+    // Current number: what was typed, or the last result (F13).
+    var current = (entry !== null) ? Number(entry) : accumulator;
+    var value = current;                                // F10: first operand
+    if (pendingOp !== null) {                           // F7/F8: immediate execution
+      value = calculate(accumulator, pendingOp, current);
+      if (value === null) { setError(); return; }
+    }
+
+    accumulator = value;
+    pendingOp = op;
+    entry = null;
+    awaitingOperand = true;
+    justEvaluated = false;
+    equation = formatNumber(accumulator) + ' ' + OPERATOR_SYMBOLS[op];
+  }
+
+  function equals() {
+    if (isError) return;
+
+    if (pendingOp === null) {
+      // F12/F14: nothing to evaluate. The entry is left as typed ("12." stays "12.");
+      // it is only marked as finished so a following digit starts a new number
+      // (AT10: 6 = 3 -> 3).
+      justEvaluated = true;
+      return;
+    }
+
+    var left = accumulator;
+    var right = awaitingOperand ? accumulator : Number(entry); // "5 + =" uses 5 twice
+    var result = calculate(left, pendingOp, right);
+    if (result === null) { setError(); return; }       // F19
+
+    equation = formatNumber(left) + ' ' + OPERATOR_SYMBOLS[pendingOp] + ' ' +
+               formatNumber(right) + ' =';
+    accumulator = result;
+    entry = null;
+    pendingOp = null;
+    awaitingOperand = false;
+    justEvaluated = true;
+  }
+
+  function clear() {                                    // F15
+    reset();
+  }
+
+  function getState() {
+    var display;
+    if (isError) display = ERROR_TEXT;
+    else if (entry !== null) display = entry;
+    else display = formatNumber(accumulator);
+
+    return {
+      display: display,
+      equation: equation,
+      isError: isError,
+      pendingOperator: pendingOp,
+      // Highlight only while an operator is waiting for the next number.
+      highlightOperator: (pendingOp !== null && awaitingOperand) ? pendingOp : null
+    };
+  }
+
+  reset();
+  return {
+    inputDigit: inputDigit,
+    inputDecimal: inputDecimal,
+    inputOperator: inputOperator,
+    equals: equals,
+    clear: clear,
+    getState: getState
+  };
+}
+
+if (typeof module !== 'undefined' && module.exports) module.exports = { createCalculator: createCalculator, formatNumber: formatNumber };
+</script>
+
+<!-- ============================ DOM WIRING ============================ -->
+<script id="calc-dom">
+if (typeof document !== 'undefined') {
+  (function () {
+    var calc = createCalculator();
+    var root = document.getElementById('calc');
+    var keys = document.getElementById('calc-keys');
+    var valueEl = document.getElementById('calc-value');
+    var equationEl = document.getElementById('calc-equation').firstElementChild;
+    var operatorButtons = root.querySelectorAll('[data-action="operator"]');
+    var equalsButton = root.querySelector('[data-action="equals"]');
+    var MIN_FONT_PX = 24;
+
+    // Shrink the main value (down to MIN_FONT_PX) until it fits without clipping.
+    function fitValue() {
+      valueEl.style.fontSize = '';
+      var size = parseFloat(getComputedStyle(valueEl).fontSize);
+      while (valueEl.scrollWidth > valueEl.clientWidth && size > MIN_FONT_PX) {
+        size -= 2;
+        valueEl.style.fontSize = size + 'px';
+      }
+    }
+
+    function render() {
+      var state = calc.getState();
+      valueEl.textContent = state.display;
+      valueEl.classList.toggle('is-error', state.isError);
+      equationEl.textContent = state.equation;
+      fitValue();
+
+      operatorButtons.forEach(function (button) {
+        var selected = button.dataset.value === state.highlightOperator;
+        button.classList.toggle('is-selected', selected);
+        button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+        button.setAttribute('aria-disabled', state.isError ? 'true' : 'false');
+      });
+      equalsButton.setAttribute('aria-disabled', state.isError ? 'true' : 'false');
+    }
+
+    // One place that maps an action name to a calculator call (used by mouse and keyboard).
+    function perform(action, value) {
+      if (action === 'digit') calc.inputDigit(value);
+      else if (action === 'decimal') calc.inputDecimal();
+      else if (action === 'operator') calc.inputOperator(value);
+      else if (action === 'equals') calc.equals();
+      else if (action === 'clear') calc.clear();
+      render();
+    }
+
+    keys.addEventListener('click', function (event) {
+      var button = event.target.closest('button[data-action]');
+      if (button) perform(button.dataset.action, button.dataset.value);
+    });
+
+    document.addEventListener('keydown', function (event) {
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      var key = event.key;
+      var handled = true;
+
+      if (key >= '0' && key <= '9' && key.length === 1) perform('digit', key);
+      else if (key === '.') perform('decimal');
+      else if (key === '+' || key === '-' || key === '*' || key === '/') perform('operator', key);
+      else if (key === '=') perform('equals');
+      // preventDefault below also stops a focused button from firing "click" on Enter,
+      // so equals runs exactly once.
+      else if (key === 'Enter') perform('equals');
+      else if (key === 'Escape') perform('clear');
+      else handled = false;
+
+      if (handled) event.preventDefault();
+    });
+
+    window.addEventListener('resize', fitValue);
+    render();
+  })();
+}
+</script>
+</body>
+</html>

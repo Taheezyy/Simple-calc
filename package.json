@@ -1,0 +1,13 @@
+{
+  "name": "calculator",
+  "version": "1.0.0",
+  "description": "A four-function calculator in a single HTML file (vanilla HTML, CSS and JS).",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/calculator.test.js",
+    "test:browser": "python3 tests/browser_test.py"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
